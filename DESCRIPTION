@@ -1,0 +1,15 @@
+Package: msimaging
+Title: Mass spectrometry imaging data analysis workflow
+Version: 0.0.1
+Date: 2019-10.29
+Author: Kylie A. Bemis <k.bemis@northeastern.edu>
+Maintainer: Kylie A. Bemis <k.bemis@northeastern.edu>
+Description: This workflow illustrates R / Bioconductor infrastructure
+	for mass spectrometry imaging, including data import/export,
+	pre-processing, visualization, and statistical analysis.
+License: Artistic-2.0
+Depends: R, Cardinal, rpx
+Suggests: BiocStyle, knitr, rmarkdown
+VignetteBuilder: knitr
+biocViews: Workflow, ProteomicsWorkflow, ImmunoOncologyWorkflow
+Workflow: True

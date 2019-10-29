@@ -1,0 +1,204 @@
+---
+title: "__PXD001283__: Mouse urinary bladder"
+author: "Kylie Ariel Bemis"
+date: "Revised: October 29, 2019"
+output:
+  BiocStyle::html_document:
+  toc: true
+vignette: >
+  %\VignetteIndexEntry{PXD001283: Mouse urinary bladder}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r style, echo=FALSE, results='asis'}
+BiocStyle::markdown()
+```
+
+# Introduction
+
+This vignette investigates the mouse urinary bladder dataset PXD001283 from PRIDE.
+
+We reproduce some figures from the associate publication:
+
+Römpp A, Guenther S, Schober Y, Schulz O, Takats Z, Kummer W, Spengler B; Histology by mass spectrometry: label-free tissue characterization obtained from high-accuracy bioanalytical imaging., Angew Chem Int Ed Engl, 2010 May 17, 49, 22, 3834-8, PMID: [20397170](http://europepmc.org/abstract/MED/20397170)
+
+# Setup
+
+First we set up our working environment.
+
+We load the *Cardinal* package, register a serial backend (no parallelization), and specify a (parallelization-safe) random number generator.
+
+
+```{r setup-1, message=FALSE}
+library(Cardinal)
+register(SerialParam())
+RNGkind("L'Ecuyer-CMRG")
+```
+
+In addition, we turn off progress messages so they do not clutter the vignette.
+
+```{r setup-2}
+options(Cardinal.verbose=FALSE)
+options(Cardinal.progress=FALSE)
+```
+
+# Files
+
+Now, let's see what imzML files are available and create a scratch directory to save data if we need.
+
+```{r files}
+db <- "~/Documents/Datasets/PRIDE"
+
+id <- "PXD001283"
+
+datadir <- file.path(db, id)
+
+tmpdir <- file.path(db, id, "tmp")
+
+if ( !dir.exists(tmpdir) )
+	dir.create(tmpdir)
+
+filenames <- grep(".imzML", list.files(datadir), value=TRUE)
+files <- file.path(datadir, filenames)
+files
+```
+
+We have one imzML file.
+
+# Import
+
+We import the data using a 0.01 mz binwidth, as specified in the associated publication.
+
+```{r read}
+mse <- readMSIData(files, mass.range=c(400,1000),
+					resolution=0.01, units="mz")
+```
+
+# Visualization (Fig. 1)
+
+Below, we reproduce Fig. 1A from the publication.
+
+```{r fig-1a}
+image(mse, mz=c(741.5307, 798.5410, 743.5482),
+		col=c("blue", "green", "red"),
+		contrast.enhance="histogram",
+		smooth.image="adaptive",
+		normalize.image="linear",
+		superpose=TRUE)
+```
+
+Our visualization looks very similar to the published figure.
+
+# Mean spectrum
+
+Below, we calcualate and plot the mean spectrum.
+
+```{r mean}
+mse_mean <- summarize(mse, .stat="mean")
+
+plot(mse_mean)
+```
+
+Let's zoom in on two peaks shown in Fig. 2C which are only 0.05 *mz* apart.
+
+```{r mean-zoom}
+mse_mean %>%
+	filter(mz >= 770.4, mz <= 770.7) %>%
+	plot()
+```
+
+We see both peaks are visible in the mean spectrum.
+
+# Pre-processing
+
+We perform peak picking on the mean spectrum.
+
+```{r peaks-1}
+ref <- mse_mean %>%
+	peakPick(method="mad") %>%
+	peakAlign("mean",
+			tolerance=0.01,
+			units="mz") %>%
+	peakFilter() %>%
+	process()
+```
+
+Below, we see both peaks from Fig. 2C were detected.
+
+```{r fig-2c}
+mse_mean %>%
+	filter(mz >= 770.4, mz <= 770.7) %>%
+	plot()
+
+abline(v=mz(ref), col="red", lty=2)
+```
+
+Now we bin the peaks in the full dataset to the reference peaks we detected in the mean spectrum.
+
+```{r peaks-2}
+mse_peaks <- mse %>%
+	normalize(method="tic") %>%
+	peakBin(ref=mz(ref),
+			tolerance=0.01,
+			units="mz") %>%
+	process()
+```
+
+# Visualization (Fig. 2)
+
+Below, we plot images for the two peaks at *mz* 770.51 and 770.56.
+
+```{r fig-2b}
+image(mse_peaks, mz=c(770.51, 770.56),
+	contrast.enhance="histogram",
+	smooth.image="adaptive",
+	normalize.image="linear",
+	layout=c(2,1))
+```
+
+We notice that these images are the reverse of what is shown in the paper (Fig. 2B), suggesting that these two peaks were mislabeled in the publication.
+
+The color-coding in Fig. S5 from the Supporting Information suggests that this may be the case.
+
+
+# Statistical analysis
+
+Now we perform some statistical analysis, which was not done in the original paper.
+
+We fit spatial shrunken centroids to segment the data.
+
+
+```{r ssc}
+set.seed(1)
+ssc <- spatialShrunkenCentroids(mse_peaks,
+			r=2, s=c(0,5,10,15,20), k=10,
+			method="gaussian")
+
+summary(ssc)
+
+image(ssc, model=list(s=c(5,10,15,20)), key=FALSE)
+```
+
+We can see that the background takes up several segments, showing a left-to-right gradient across the slide.
+
+We can see this same gradient in the clusters that make up the muscle layer, which is split into two segments.
+
+When `s = 20`, the muscle segment becomes a single segment:
+
+```{r}
+image(ssc, model=list(s=20))
+```
+
+Below show the muscle layer (red, 2), the adventitial layer (green, 4), and the urothelium (blue, 5), which were detected.
+
+```{r}
+image(ssc, model=list(s=20), column=c(2,4,5))
+```
+
+Below, we plot the t-statistics that show the over/under-abundance of analytes in each of these segments relative to the mean spectrum.
+
+```{r}
+plot(ssc, values="statistic", model=list(s=20), column=c(2,4,5), lwd=2)
+```
+
